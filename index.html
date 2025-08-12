@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Binaural Beats Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-900">
+    <div id="root"></div>
+    <script type="text/babel" data-presets="react">
+      const { useState, useRef, useEffect, useCallback, StrictMode } = React;
+
+      // From constants.ts
+      const BRAINWAVES = [
+        { name: 'Delta', range: '0.5-4 Hz', description: 'Deep sleep, healing, immune system', defaultBeat: 2.5 },
+        { name: 'Theta', range: '4-8 Hz', description: 'Meditation, intuition, memory', defaultBeat: 6 },
+        { name: 'Alpha', range: '8-12 Hz', description: 'Relaxation, focus, learning', defaultBeat: 10 },
+        { name: 'Beta', range: '12-30 Hz', description: 'Active thinking, focus, alertness', defaultBeat: 20 },
+        { name: 'Gamma', range: '30-100 Hz', description: 'Peak performance, cognition', defaultBeat: 40 },
+      ];
+
+      const BASE_FREQUENCY_MIN = 100;
+      const BASE_FREQUENCY_MAX = 500;
+      const BEAT_FREQUENCY_MIN = 1;
+      const BEAT_FREQUENCY_MAX = 100;
+      const VOLUME_MIN = 0;
+      const VOLUME_MAX = 100;
+
+      // From components/WaveButton.tsx
+      const WaveButton = ({ label, onClick, isActive }) => {
+        const baseClasses = 'px-4 py-2 sm:px-6 rounded-lg text-white font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-800';
+        const activeClasses = 'bg-gray-500 shadow-inner';
+        const inactiveClasses = 'bg-gray-700 hover:bg-gray-600';
+        
+        return (
+          <button
+            onClick={onClick}
+            className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+          >
+            {label}
+          </button>
+        );
+      };
+
+      // From components/ControlSlider.tsx
+      const ControlSlider = ({ label, value, min, max, step, unit, onChange }) => {
+        return (
+          <div className="space-y-3">
+            <label className="text-gray-300 font-medium">
+              {label}: {value}{unit}
+            </label>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              onChange={onChange}
+              className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+          </div>
+        );
+      };
+
+      // From App.tsx
+      const App = () => {
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [baseFrequency, setBaseFrequency] = useState(240);
+        const [beatFrequency, setBeatFrequency] = useState(10);
+        const [volume, setVolume] = useState(50);
+        const [activeWave, setActiveWave] = useState('Alpha');
+
+        const audioContextRef = useRef(null);
+        const oscillatorLRef = useRef(null);
+        const oscillatorRRef = useRef(null);
+        const gainNodeRef = useRef(null);
+
+        const stopAudio = useCallback(() => {
+          if (audioContextRef.current) {
+            audioContextRef.current.close().catch(console.error);
+            audioContextRef.current = null;
+            oscillatorLRef.current = null;
+            oscillatorRRef.current = null;
+            gainNodeRef.current = null;
+            setIsPlaying(false);
+          }
+        }, []);
+
+        const playAudio = useCallback(() => {
+          if (audioContextRef.current) return;
+
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          const context = new AudioContext();
+          audioContextRef.current = context;
+
+          const gainNode = context.createGain();
+          gainNode.gain.setValueAtTime(volume / 100, context.currentTime);
+          gainNodeRef.current = gainNode;
+          
+          const merger = context.createChannelMerger(2);
+
+          const oscL = context.createOscillator();
+          oscL.type = 'sine';
+          const leftFreq = baseFrequency - beatFrequency / 2;
+          oscL.frequency.setValueAtTime(leftFreq, context.currentTime);
+          oscillatorLRef.current = oscL;
+
+          const oscR = context.createOscillator();
+          oscR.type = 'sine';
+          const rightFreq = baseFrequency + beatFrequency / 2;
+          oscR.frequency.setValueAtTime(rightFreq, context.currentTime);
+          oscillatorRRef.current = oscR;
+          
+          oscL.connect(merger, 0, 0);
+          oscR.connect(merger, 0, 1);
+          merger.connect(gainNode);
+          gainNode.connect(context.destination);
+
+          oscL.start();
+          oscR.start();
+          setIsPlaying(true);
+        }, [baseFrequency, beatFrequency, volume]);
+
+        const togglePlay = () => {
+          if (isPlaying) {
+            stopAudio();
+          } else {
+            playAudio();
+          }
+        };
+
+        const handleWaveSelection = (wave) => {
+          setActiveWave(wave.name);
+          setBeatFrequency(wave.defaultBeat);
+        };
+        
+        useEffect(() => {
+          if (isPlaying && audioContextRef.current) {
+            const leftFreq = baseFrequency - beatFrequency / 2;
+            const rightFreq = baseFrequency + beatFrequency / 2;
+            oscillatorLRef.current?.frequency.linearRampToValueAtTime(leftFreq, audioContextRef.current.currentTime + 0.1);
+            oscillatorRRef.current?.frequency.linearRampToValueAtTime(rightFreq, audioContextRef.current.currentTime + 0.1);
+          }
+        }, [baseFrequency, beatFrequency, isPlaying]);
+
+        useEffect(() => {
+          if (isPlaying && audioContextRef.current) {
+            gainNodeRef.current?.gain.linearRampToValueAtTime(volume / 100, audioContextRef.current.currentTime + 0.1);
+          }
+        }, [volume, isPlaying]);
+
+        useEffect(() => {
+          return () => {
+            stopAudio();
+          };
+        }, [stopAudio]);
+
+        return (
+          <div className="min-h-screen text-white flex items-center justify-center p-4 font-sans">
+            <div className="w-full max-w-2xl bg-gray-800 rounded-xl shadow-2xl p-6 sm:p-8 space-y-8">
+              <header>
+                <h1 className="text-3xl sm:text-4xl font-bold text-center tracking-wide">Binaural Beats Generator</h1>
+              </header>
+
+              <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4">
+                {BRAINWAVES.map((wave) => (
+                  <WaveButton
+                    key={wave.name}
+                    label={wave.name}
+                    onClick={() => handleWaveSelection(wave)}
+                    isActive={activeWave === wave.name}
+                  />
+                ))}
+              </section>
+              
+              <section className="bg-gray-700/50 p-4 rounded-lg space-y-2">
+                 <h2 className="text-xl font-semibold mb-3 text-blue-300">Brainwave Frequencies:</h2>
+                 {BRAINWAVES.map(wave => (
+                   <div key={wave.name} className="text-sm sm:text-base">
+                     <strong className="text-gray-200 w-16 inline-block">{wave.name}:</strong>
+                     <span className="text-gray-400 mr-2">{wave.range}</span>
+                     <span className="text-gray-400">{wave.description}</span>
+                   </div>
+                 ))}
+              </section>
+
+              <section className="space-y-6">
+                <ControlSlider 
+                  label="Base Frequency"
+                  value={baseFrequency}
+                  min={BASE_FREQUENCY_MIN}
+                  max={BASE_FREQUENCY_MAX}
+                  step={1}
+                  unit="Hz"
+                  onChange={(e) => setBaseFrequency(Number(e.target.value))}
+                />
+                <ControlSlider 
+                  label="Beat Frequency"
+                  value={beatFrequency}
+                  min={BEAT_FREQUENCY_MIN}
+                  max={BEAT_FREQUENCY_MAX}
+                  step={0.5}
+                  unit="Hz"
+                  onChange={(e) => setBeatFrequency(Number(e.target.value))}
+                />
+                <ControlSlider 
+                  label="Volume"
+                  value={volume}
+                  min={VOLUME_MIN}
+                  max={VOLUME_MAX}
+                  step={1}
+                  unit="%"
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                />
+              </section>
+
+              <footer>
+                <button
+                  onClick={togglePlay}
+                  className={`w-full py-3 text-lg font-bold rounded-lg transition-colors duration-300 ${isPlaying ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-4 focus:ring-opacity-50 ${isPlaying ? 'focus:ring-red-400' : 'focus:ring-blue-400'}`}
+                >
+                  {isPlaying ? 'Stop' : 'Play'}
+                </button>
+              </footer>
+            </div>
+          </div>
+        );
+      };
+
+      // From index.tsx
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error("Could not find root element to mount to");
+      }
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>
+      );
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
