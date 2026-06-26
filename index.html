@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binaural Beats Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900">
+  <main class="min-h-screen text-white flex items-center justify-center p-4 font-sans">
+    <div class="w-full max-w-2xl bg-gray-800 rounded-xl shadow-2xl p-6 sm:p-8 space-y-8">
+      <header>
+        <h1 class="text-3xl sm:text-4xl font-bold text-center tracking-wide">Binaural Beats Generator</h1>
+      </header>
+
+      <section id="wave-buttons" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4"></section>
+
+      <section class="bg-gray-700/50 p-4 rounded-lg space-y-2">
+        <h2 class="text-xl font-semibold mb-3 text-blue-300">Brainwave Frequencies:</h2>
+        <div id="wave-info"></div>
+      </section>
+
+      <section class="space-y-6">
+        <div class="space-y-3">
+          <label id="base-label" class="text-gray-300 font-medium"></label>
+          <input id="base" type="range" min="100" max="500" step="1" value="240" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+        </div>
+        <div class="space-y-3">
+          <label id="beat-label" class="text-gray-300 font-medium"></label>
+          <input id="beat" type="range" min="1" max="100" step="0.5" value="10" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+        </div>
+        <div class="space-y-3">
+          <label id="volume-label" class="text-gray-300 font-medium"></label>
+          <input id="volume" type="range" min="0" max="100" step="1" value="10" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+        </div>
+      </section>
+
+      <footer>
+        <button id="play" class="w-full py-3 text-lg font-bold rounded-lg transition-colors duration-300 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-opacity-50 focus:ring-blue-400">Play</button>
+        <p class="text-center text-sm text-gray-400 mt-3">Use headphones for the binaural effect. Browser audio must be enabled.</p>
+      </footer>
+    </div>
+  </main>
+
+  <script>
+    const BRAINWAVES = [
+      { name: 'Delta', range: '0.5-4 Hz', description: 'Deep sleep, healing, immune system', defaultBeat: 2.5 },
+      { name: 'Theta', range: '4-8 Hz', description: 'Meditation, intuition, memory', defaultBeat: 6 },
+      { name: 'Alpha', range: '8-12 Hz', description: 'Relaxation, focus, learning', defaultBeat: 10 },
+      { name: 'Beta', range: '12-30 Hz', description: 'Active thinking, focus, alertness', defaultBeat: 20 },
+      { name: 'Gamma', range: '30-100 Hz', description: 'Peak performance, cognition', defaultBeat: 40 },
+    ];
+
+    let isPlaying = false;
+    let activeWave = 'Alpha';
+    let audioContext = null;
+    let oscillatorL = null;
+    let oscillatorR = null;
+    let gainNode = null;
+
+    const waveButtons = document.getElementById('wave-buttons');
+    const waveInfo = document.getElementById('wave-info');
+    const base = document.getElementById('base');
+    const beat = document.getElementById('beat');
+    const volume = document.getElementById('volume');
+    const baseLabel = document.getElementById('base-label');
+    const beatLabel = document.getElementById('beat-label');
+    const volumeLabel = document.getElementById('volume-label');
+    const playButton = document.getElementById('play');
+
+    function buttonClasses(isActive) {
+      return [
+        'px-4 py-2 sm:px-6 rounded-lg text-white font-semibold transition-all duration-200',
+        'focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-800',
+        isActive ? 'bg-gray-500 shadow-inner' : 'bg-gray-700 hover:bg-gray-600'
+      ].join(' ');
+    }
+
+    function renderWaves() {
+      waveButtons.innerHTML = '';
+      BRAINWAVES.forEach((wave) => {
+        const button = document.createElement('button');
+        button.textContent = wave.name;
+        button.className = buttonClasses(activeWave === wave.name);
+        button.addEventListener('click', () => {
+          activeWave = wave.name;
+          beat.value = String(wave.defaultBeat);
+          updateLabels();
+          updateFrequencies();
+          renderWaves();
+        });
+        waveButtons.appendChild(button);
+      });
+
+      waveInfo.innerHTML = '';
+      BRAINWAVES.forEach((wave) => {
+        const row = document.createElement('div');
+        row.className = 'text-sm sm:text-base';
+        row.innerHTML = `<strong class="text-gray-200 w-16 inline-block">${wave.name}:</strong><span class="text-gray-400 mr-2">${wave.range}</span><span class="text-gray-400">${wave.description}</span>`;
+        waveInfo.appendChild(row);
+      });
+    }
+
+    function updateLabels() {
+      baseLabel.textContent = `Base Frequency: ${base.value}Hz`;
+      beatLabel.textContent = `Beat Frequency: ${beat.value}Hz`;
+      volumeLabel.textContent = `Volume: ${volume.value}%`;
+    }
+
+    function getFrequencies() {
+      const baseFrequency = Number(base.value);
+      const beatFrequency = Number(beat.value);
+      return {
+        left: Math.max(1, baseFrequency - beatFrequency / 2),
+        right: Math.max(1, baseFrequency + beatFrequency / 2),
+      };
+    }
+
+    function updateFrequencies() {
+      if (!isPlaying || !audioContext || !oscillatorL || !oscillatorR) return;
+      const frequencies = getFrequencies();
+      const t = audioContext.currentTime + 0.1;
+      oscillatorL.frequency.linearRampToValueAtTime(frequencies.left, t);
+      oscillatorR.frequency.linearRampToValueAtTime(frequencies.right, t);
+    }
+
+    function updateVolume() {
+      if (!isPlaying || !audioContext || !gainNode) return;
+      gainNode.gain.linearRampToValueAtTime(Number(volume.value) / 100, audioContext.currentTime + 0.1);
+    }
+
+    async function playAudio() {
+      if (audioContext) return;
+
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) {
+        alert('This browser does not support the Web Audio API.');
+        return;
+      }
+
+      try {
+        audioContext = new AudioContextCtor();
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+
+        gainNode = audioContext.createGain();
+        gainNode.gain.setValueAtTime(Number(volume.value) / 100, audioContext.currentTime);
+
+        const merger = audioContext.createChannelMerger(2);
+        const frequencies = getFrequencies();
+
+        oscillatorL = audioContext.createOscillator();
+        oscillatorL.type = 'sine';
+        oscillatorL.frequency.setValueAtTime(frequencies.left, audioContext.currentTime);
+
+        oscillatorR = audioContext.createOscillator();
+        oscillatorR.type = 'sine';
+        oscillatorR.frequency.setValueAtTime(frequencies.right, audioContext.currentTime);
+
+        oscillatorL.connect(merger, 0, 0);
+        oscillatorR.connect(merger, 0, 1);
+        merger.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillatorL.start();
+        oscillatorR.start();
+
+        isPlaying = true;
+        playButton.textContent = 'Stop';
+        playButton.className = 'w-full py-3 text-lg font-bold rounded-lg transition-colors duration-300 bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-opacity-50 focus:ring-red-400';
+      } catch (error) {
+        console.error('Could not start audio:', error);
+        stopAudio();
+        alert('Could not start audio. Check browser audio permissions and try again.');
+      }
+    }
+
+    function stopAudio() {
+      const context = audioContext;
+      audioContext = null;
+      oscillatorL = null;
+      oscillatorR = null;
+      gainNode = null;
+      isPlaying = false;
+      playButton.textContent = 'Play';
+      playButton.className = 'w-full py-3 text-lg font-bold rounded-lg transition-colors duration-300 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-opacity-50 focus:ring-blue-400';
+
+      if (context) {
+        context.close().catch(console.error);
+      }
+    }
+
+    base.addEventListener('input', () => { updateLabels(); updateFrequencies(); });
+    beat.addEventListener('input', () => { updateLabels(); updateFrequencies(); });
+    volume.addEventListener('input', () => { updateLabels(); updateVolume(); });
+    playButton.addEventListener('click', () => isPlaying ? stopAudio() : playAudio());
+    window.addEventListener('beforeunload', stopAudio);
+
+    renderWaves();
+    updateLabels();
+  </script>
+</body>
+</html>
