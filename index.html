@@ -8,11 +8,11 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
 </head>
   <body class="bg-gray-900">
     <div id="root"></div>
-    <script type="text/babel" data-presets="react">
+    <script type="text/babel" data-presets="env" data-plugins="transform-react-jsx">
+      /** @jsxRuntime classic */
       const { useState, useRef, useEffect, useCallback, StrictMode } = React;
 
       // From constants.ts
@@ -244,6 +244,5 @@
         </StrictMode>
       );
     </script>
- 
 </body>
 </html>
